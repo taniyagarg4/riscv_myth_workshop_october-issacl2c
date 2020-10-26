@@ -55,12 +55,15 @@
       @0
          $reset = *reset;
          
-         // YOUR CODE HERE
          // aarright, let's start :)
+         // All code "sections" are marked for easy access and navigation.
          //-----------------------------------------------------------------
          //1. PC logic:
-         $pc[31:0] = (>>1$reset) ? 0 : >>1$pc + 4;  // address unit: byte, Instruction size: 4 byte
+         $pc[31:0] = >>1$reset     ? 0             : // Reset to 0
+                     >>1$taken_br  ? >>1$br_tgt_pc : // Branch to target pc (from section 6)
+                                     >>1$pc + 4;     // address unit: byte, Instruction size: 4 byte
          
+         //-----------------------------------------------------------------
          //2. IMEM fetch logic 
          // 2.1 (stage 0 - address instr)
          $imem_rd_en = !$reset;
@@ -69,7 +72,8 @@
       @1   
          // 2.2 IMEM fetch logic (stage 1 - read instr)
          $instr[31:0] = $imem_rd_data[31:0];
-  
+         
+         //-----------------------------------------------------------------
          //3. Instruction Decode:
          // 3.1 Decode Instruction type:
          //  3.1.1 I-type:
@@ -124,8 +128,8 @@
          $is_addi   = ($dec_bits[10:0] ==? 11'bx_000_0010011);
          
          // 3.4.3 Branch instructions:
-         $is_branch = ($opcode ==? 7'b1100011);
-         ?$is_branch
+         //$is_branch = ($opcode ==? 7'b1100011);
+         ?$is_b_instr
             $is_beq  = ($funct3 == 0);
             $is_bne  = ($funct3 == 1);
             $is_blt  = ($funct3 == 4);
@@ -133,6 +137,7 @@
             $is_bltu = ($funct3 == 6);
             $is_bgeu = ($funct3 == 7);
          
+         //-----------------------------------------------------------------
          //4 : Register File operations
          // 4.1 Register File read
          //  4.1.1 Address for source registers
@@ -149,14 +154,32 @@
          $rf_wr_en = $rd_valid && !($rd[4:0] == 5'b0);
          $rf_wr_index[4:0] = $rd[4:0];
          $rf_wr_data[31:0] = $result[31:0];
-
+         
+         //-----------------------------------------------------------------
          //5: ALU :) Compute + MUX(select) based on instruction
-         $result[31:0] = 
+         $result[31:0] =
             $is_addi      ? $src1_value[31:0] + $imm[31:0]        : //addi
             $is_add       ? $src1_value[31:0] + $src2_value[31:0] : //add
                             32'bx;                                  // default, dont care
          
-
+         //-----------------------------------------------------------------
+         //6: Branch Logic
+         $x1[31:0] = $rf_rd_data1;
+         $x2[31:0] = $rf_rd_data2;
+         // 6.1 Get program's branch logic
+         $taken_br =
+            !$is_b_instr ?  1'b0                               :
+            $is_beq      ?  $x1 == $x2                         :
+            $is_bne      ?  $x1 != $x2                         :
+            $is_blt      ? ($x1 < $x2)  ^ ($x1[31] != $x2[31]) :
+            $is_bge      ? ($x1 >= $x2) ^ ($x1[31] != $x2[31]) :
+            $is_bltu     ? ($x1 < $x2)                         :
+            $is_bgeu     ? ($x1 >= $x2)                        :
+                            1'b0;                                //not branch
+         // 6.2 Compute the target PC
+         $br_tgt_pc[31:0] = $pc + $imm;
+         
+         //-----------------------------------------------------------------
       // Note: Because of the magic we are using for visualisation, if visualisation is enabled below,
       //       be sure to avoid having unassigned signals (which you might be using for random inputs)
       //       other than those specifically expected in the labs. You'll get strange errors for these.
@@ -168,4 +191,3 @@
    
 \SV
    endmodule
-
